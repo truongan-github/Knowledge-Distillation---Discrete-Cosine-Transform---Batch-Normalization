@@ -31,55 +31,6 @@ def rin(input,b=4,s=2):
       
   return output
 
-class DCT2(nn.Module):
-    def __init__(self, block_size=4, p=0, mode = 'random', mean = None, std=None, device = 'cpu'):
-
-      super(DCT2, self).__init__()
-      ### forming the cosine transform matrix
-      self.block_size = block_size
-      self.device = device
-      self.mean =mean
-      self.std =std
-      self.Q = torch.zeros((self.block_size,self.block_size)).to(self.device)
-      
-      self.Q[0] = math.sqrt( 1.0/float(self.block_size) )
-      for i in range (1,self.block_size,1):
-        for j in range(self.block_size):
-          self.Q[i,j] = math.sqrt( 2.0/float(self.block_size) ) * math.cos( float((2*j+1)*math.pi*i) /float(2.0*self.block_size) )
-
-      
-
-    def rgb_to_ycbcr(self,input):
-        
-        # input is mini-batch N x 3 x H x W of an RGB image
-        output = torch.zeros_like(input).to(self.device)
-        input = (input * 255.0)
-        output[:, 0, :, :] = input[:, 0, :, :] * 0.299+ input[:, 1, :, :] * 0.587 + input[:, 2, :, :] * 0.114 
-        output[:, 1, :, :] = input[:, 0, :, :] * -0.168736 - input[:, 1, :, :] *0.331264+ input[:, 2, :, :] * 0.5 + 128
-        output[:, 2, :, :] = input[:, 0, :, :] * 0.5 - input[:, 1, :, :] * 0.418688- input[:, 2, :, :] * 0.081312+ 128
-        return output/255.0
-
-    def ycbcr_to_freq(self,input): 
- 
-        
-        output = torch.zeros_like(input).to(self.device)
-        a=int(input.shape[2]/self.block_size)
-        b=int(input.shape[3]/self.block_size)
-       
-        # Compute DCT in block_size x block_size blocks 
-        for i in range(a):
-            for j in range(b):
-                output[:,:,i*self.block_size : (i+1)*self.block_size,j*self.block_size : (j+1)*self.block_size] = torch.matmul(torch.matmul(self.Q, input[:, :, i*self.block_size : (i+1)*self.block_size, j*self.block_size : (j+1)*self.block_size]), self.Q.permute(1,0).contiguous() )
-               
-        return output 
-
-    def forward(self, x):
-        #return self.ycbcr_to_freq( self.rgb_to_ycbcr(x))
-        if (x.shape[1]==3):
-          return self.ycbcr_to_freq( self.rgb_to_ycbcr(x))
-        else:
-          return self.ycbcr_to_freq(x)  
-
 class AverageMeter(object):
     """Computes and stores the average and current value"""
     def __init__(self, name, fmt=':f'):
@@ -221,9 +172,8 @@ if(resume_from_ckpt):
    ckpt            = torch.load(ckpt_fname)
    start_epoch     = ckpt['start_epoch']
    end_epoch       = start_epoch+num_epochs
-   test_error_best = ckpt['test_error_best']
-   epoch_best      = ckpt['epoch_best']
-   train_time      = ckpt['train_time']
+   accuracy_best   = ckpt['max_accuracy']
+   epoch_best      = ckpt['epoch']
    model.load_state_dict(ckpt['model_state_dict'])
    optimizer.load_state_dict(ckpt['optim_state_dict'])
    print('Loaded ANN_VGG from {}\n'.format(ckpt_fname))
