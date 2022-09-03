@@ -211,9 +211,8 @@ if(resume_from_ckpt):
    ckpt            = torch.load(ckpt_fname)
    start_epoch     = ckpt['start_epoch']
    end_epoch       = start_epoch+num_epochs
-   test_error_best = ckpt['test_error_best']
-   epoch_best      = ckpt['epoch_best']
-   train_time      = ckpt['train_time']
+   accuracy_best   = ckpt['max_accuracy']
+   epoch_best      = ckpt['epoch']
    model.load_state_dict(ckpt['model_state_dict'])
    optimizer.load_state_dict(ckpt['optim_state_dict'])
    print('Loaded ANN_VGG from {}\n'.format(ckpt_fname))
@@ -291,9 +290,8 @@ for epoch in range(start_epoch, end_epoch):
             ckpt = {'model_state_dict': model.state_dict(),
                       'optim_state_dict': optimizer.state_dict(),
                       'start_epoch'     : epoch+1,
-                      'max_accuracy'    : max_accuracy,
-                      'epoch_best'      : epoch,
-                      'train_time'      : train_time}
+                      'accuracy_best'   : max_accuracy,
+                      'epoch_best'      : epoch}
             torch.save(ckpt, ckpt_fname)
     if acc_record.avg > max_accuracy:
             max_accuracy = acc_record.avg
