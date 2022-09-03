@@ -289,9 +289,8 @@ for epoch in range(start_epoch, end_epoch):
             ckpt = {'model_state_dict': model.state_dict(),
                     'optim_state_dict': optimizer.state_dict(),
                     'start_epoch'     : epoch+1,
-                    'test_error_best' : test_error_best,
-                    'epoch_best'      : epoch_best,
-                    'train_time'      : train_time}
+                    'accuracy_best'   : max_accuracy,
+                    'epoch_best'      : epoch}
             torch.save(ckpt, name)
         if acc_record.avg > max_accuracy:
             max_accuracy = acc_record.avg    
