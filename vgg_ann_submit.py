@@ -7,14 +7,13 @@ from torch.utils.data.dataloader import DataLoader
 import torch.backends.cudnn as cudnn
 from   tensorboard_logger import configure, log_value
 import torchvision
-#import torchvision.transforms as transforms
+import torchvision.transforms as transforms
 import numpy as np
 
 import os
 import argparse
 import math
 from vgg_ann_models_submit import *
-#from utils import progress_bar
 import time
 
 def rin(input,b=4,s=2):
@@ -53,7 +52,6 @@ class DCT2(nn.Module):
     def rgb_to_ycbcr(self,input):
         
         # input is mini-batch N x 3 x H x W of an RGB image
-        #output = Variable(input.data.new(*input.size())).to(self.device)
         output = torch.zeros_like(input).to(self.device)
         input = (input * 255.0)
         output[:, 0, :, :] = input[:, 0, :, :] * 0.299+ input[:, 1, :, :] * 0.587 + input[:, 2, :, :] * 0.114 
@@ -76,11 +74,11 @@ class DCT2(nn.Module):
         return output 
 
     def forward(self, x):
-        #return self.ycbcr_to_freq( self.rgb_to_ycbcr(x) )
+        #return self.ycbcr_to_freq( self.rgb_to_ycbcr(x))
         if (x.shape[1]==3):
-          return self.ycbcr_to_freq( self.rgb_to_ycbcr(x) )
+          return self.ycbcr_to_freq( self.rgb_to_ycbcr(x))
         else:
-          return self.ycbcr_to_freq(x )  
+          return self.ycbcr_to_freq(x)  
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -112,6 +110,21 @@ def adjust_learning_rate(optimizer, epoch):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr        
 
+def accuracy(output, target, topk=(1,)):
+    """Computes the precision@k for the specified values of k"""
+    maxk = max(topk)
+    batch_size = target.size(0)
+
+    _, pred = output.topk(maxk, 1, True, True)
+    pred = pred.t()
+    correct = pred.eq(target.view(1, -1).expand_as(pred))
+
+    res = []
+    for k in topk:
+        correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+        res.append(correct_k.mul_(100.0 / batch_size))
+    return res
+  
 parser = argparse.ArgumentParser(description='PyTorch tinyimagenet Training')
 parser.add_argument('--lr',                    default=0.1,       type=float, help='learning rate')
 parser.add_argument('-b', '--batch_size',      default=128,       type=int,metavar='N', help='mini-batch size (default: 128)')
@@ -167,105 +180,43 @@ print('==> Preparing data..')
 #dataset             = 'tinyIMAGENET' # {'CIFAR10', 'CIFAR100', 'IMAGENET'}
 dataset             = 'CIFAR10'
 #usual
-normalize       = transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [0.5, 0.5, 0.5])
 
-# usual imgnet stat from repos
-#normalize       = transforms.Normalize(mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225])
-
-# calculated itiny-mgnet stat 
-#normalize       = transforms.Normalize(mean = [0.48, 0.448, 0.3975], std = [0.277, 0.269, 0.282])
-
-transform_train = transforms.Compose([
-                     transforms.RandomCrop(32, padding=4),
-                     transforms.RandomHorizontalFlip(),
-                     transforms.ToTensor(),
-                     normalize])
-transform_test  = transforms.Compose([transforms.ToTensor(), normalize])
-
-if dataset == 'CIFAR10':
-    trainset    = datasets.CIFAR10(root = './cifar_data', train = True, download = True, transform = transform_train)
-    testset     = datasets.CIFAR10(root='./cifar_data', train=False, download=True, transform=                               transform_test)
+if dataset == 'CIFAR100':
+    normalize   = transforms.Normalize((0.5071,0.4867,0.4408),(0.2675,0.2565,0.2761))
+    labels      = 100 
+elif dataset == 'CIFAR10':
+    normalize   = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
     labels      = 10
+transform_train = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        normalize
+        ])
+transform_test = transforms.Compose([transforms.ToTensor(), normalize])
 
-elif dataset == 'CIFAR100':
-    trainset    = datasets.CIFAR100(root = './cifar_data', train = True, download = True, transform = transform_train)
-    testset     = datasets.CIFAR100(root='./cifar_data', train=False, download=True, transform=                               transform_test)
-    labels      = 100
+if dataset == 'CIFAR100':
+    trainset  = CIFAR100(root='./data/cifar100', train=True, download=True,transform =transform_train)
+    testset    = CIFAR100(root='./data/cifar100', train=False, download=True, transform=transform_test)
+    
+elif dataset == 'CIFAR10': 
+    trainset   = CIFAR10(root='./data/cifar10', train=True, download=True,transform =transform_train)
+    testset    = CIFAR10(root='./data/cifar10', train=False, download=True, transform=transform_test)
 
-elif dataset == 'IMAGENET':
-    labels      = 1000
-    traindir    = os.path.join('/local/scratch/a/imagenet/imagenet2012/', 'train')
-    valdir      = os.path.join('/local/scratch/a/imagenet/imagenet2012/', 'val')
-    trainset    = datasets.ImageFolder(
-                        traindir,
-                        transforms.Compose([
-                            transforms.RandomResizedCrop(224),
-                            transforms.RandomHorizontalFlip(),
-                            transforms.ToTensor(),
-                            normalize,
-                        ]))
-    testset     = datasets.ImageFolder(
-                        valdir,
-                        transforms.Compose([
-                            transforms.Resize(256),
-                            transforms.CenterCrop(224),
-                            transforms.ToTensor(),
-                            normalize,
-                        ])) 
-elif dataset == 'tinyIMAGENET':
-    labels      = 200
-    # adding the tinyimagenet directory
-    traindir    = os.path.join('/home/nano01/a/banerj11/srinivg_BackProp_CIFAR10/sayeed/tiny-imagenet-200/', 'train')
-    valdir      = os.path.join('/home/nano01/a/banerj11/srinivg_BackProp_CIFAR10/sayeed/tiny-imagenet-200/', 'val')
-   
-#    traindir    = os.path.join('/local/scratch/a/chowdh23/data/tiny-imagenet-200/', 'train')
-#    valdir      = os.path.join('/local/scratch/a/chowdh23/data/tiny-imagenet-200/', 'val')
-    trainset    = datasets.ImageFolder(
-                        traindir,
-                        transforms.Compose([
-                            transforms.RandomResizedCrop(64),
-                            transforms.RandomHorizontalFlip(),
-                            transforms.RandomVerticalFlip(),
-                            transforms.ToTensor(),
-                            normalize,
-                        ]))
-    testset     = datasets.ImageFolder(
-                        valdir,
-                        transforms.Compose([
-                            #transforms.Resize(256),
-                            #transforms.CenterCrop(224),
-                            transforms.ToTensor(),
-                            normalize,
-                        ]))
-
-trainloader    = DataLoader(trainset, batch_size=batch_size, shuffle=True)
-testloader     = DataLoader(testset, batch_size=batch_size, shuffle=False)
+    trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=False, generator=torch.Generator(device='cuda'))
+    testloader = DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=False)
 
 # Model
 print('==> Building model..')
 model = VGG('VGG16', labels=labels)
-# net = ResNet18()
-# net = PreActResNet18()
-# net = GoogLeNet()
-# net = DenseNet121()
-# net = ResNeXt29_2x64d()
-# net = MobileNet()
-# net = MobileNetV2()
-# net = DPN92()
-# net = ShuffleNetG2()
-# net = SENet18()
-# net = ShuffleNetV2(1)
-#net = EfficientNetB0()
 model = model.cuda()
 model = torch.nn.DataParallel(model).cuda()
 
 use_cuda =torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
-m=DCT2(block_size=4, device = device).to(device)
 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
-#optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=5e-4, amsgrad=False)
 if(resume_from_ckpt):
    ckpt            = torch.load(ckpt_fname)
    start_epoch     = ckpt['start_epoch']
@@ -279,107 +230,77 @@ if(resume_from_ckpt):
 train_time = 0
 print('********** ANN training and evaluation **********')
 for epoch in range(start_epoch, end_epoch):
-    train_loss = AverageMeter("Loss")
-    test_loss = AverageMeter("Loss@1")
-#    model.use_max_out_over_time = use_max_out_over_time
-#    model.module.updt_tend(t_end_updt)
+    loss_record = AverageMeter('Loss')
+    acc_record   = AverageMeter('Acc@1')
+    #Train model
+    start_time = time.time()
     model.train()
     adjust_learning_rate(optimizer, epoch)
-    
-    for i, data in enumerate(trainloader):
-#        print("Epoch: {}/{};".format(epoch+1, end_epoch), "Training batch:{}/{};".format(i+1, math.ceil(num_train/batch_size)))
-
-        start_time = time.time()
-        # Load the inputs and targets
-        inputs, targets = data
-        #targets=torch.from_numpy(np.eye(num_cls)[targets])
+    for data, target in train_loader:
+         # Load the inputs and targets
+         if torch.cuda.is_available() and args.gpu:
+            data, target = data.cuda(), target.cuda()        
+            
+            if dataset=='CIFAR10' or dataset=='CIFAR100':
+              data =rin(data)
+            # Reset the gradient
+            optimizer.zero_grad()
+            
+            # Perform forward pass and compute the target loss
+            output = model(data)
+            
+            loss = F.cross_entropy(output,target)
+            
+            # Perform backward pass and update the weights
+            loss.backward()
+            optimizer.step()
+            
+            batch_acc = accuracy(output, target, topk=(1,))[0]
+            loss_record.update(loss.item(), data.size(0))
+            acc_record.update(batch_acc.item(), data.size(0))
+        run_time = time.time() - start_time
+        info = 'Train: epoch: {:03d}/{:03d}\t run_time:{:.2f}\t cls_loss:{:.4f}\t train_acc:{:.2f}\t'.format(
+            epoch+1, epochs, run_time, loss_record.avg, acc_record.avg)
+        print(info)
         
-        inputs, targets = inputs.cuda(), targets.cuda()
-        if dataset=='CIFAR10' or dataset=='CIFAR100':
-            inputs =rin(inputs)
-        #inputs =m(inputs)
-
-        # Reset the gradients
-        optimizer.zero_grad()
-
-        # Perform forward pass and compute the target loss
-        output = model(inputs)
-        #output= F.softmax(output,dim=1)
-      
-        #b=targets.float()
-        loss   = criterion(output, targets)
-        train_loss.update(loss.item(), targets.size(0))
-
-        # Perform backward pass and update the weights
-        loss.backward()
-        optimizer.step()
-        end_time = time.time()
-        train_time += (end_time-start_time)/3600
-         
-    # Print error measures and log progress to TensorBoard
-    train_loss_per_epoch = train_loss.avg
-#    print("Epoch: {}/{};".format(epoch+1, end_epoch), "########## Training loss: {}".format(train_loss_per_epoch))
-    if(tensorboard):
-        log_value('train_loss', train_loss_per_epoch, epoch)
-
     # Evaluate classification accuracy on the test set
-#    model.use_max_out_over_time = False
-#    model.module.updt_tend(t_end)
-    correct_pred_top1 = 0
-    correct_pred_topk = 0
     model.eval()
-    with torch.no_grad():
-         for j, data in enumerate(testloader, 0):
-#             print("Epoch: {}/{};".format(epoch+1, end_epoch), "Test batch: {}/{}".format(j+1, math.ceil(num_test/batch_size)))
-             images, labels = data
+        for data, target in test_loader:  
+            if torch.cuda.is_available() and args.gpu:
+                data, target = data.cuda(), target.cuda()
+            if dataset=='CIFAR10' or dataset=='CIFAR100':
+                images =rin(images)
+            with torch.no_grad():
+                output = model(data)
+                loss = F.cross_entropy(output,target)
+            
+            batch_acc = accuracy(output, target, topk=(1,))[0]
+            loss_record.update(loss.item(), data.size(0))
+            acc_record.update(batch_acc.item(), data.size(0))
+            
+        run_time = time.time() - start_time
+        if epoch>30 and acc_record.avg<15.0:
+            print('\n Quitting as the training is not progressing')
+            exit(0)
+        
+        # Checkpoint SNN training and evaluation states
+        if acc_record.avg >= old_max_accuracy:
+            old_max_accuracy = acc_record.avg
+            ckpt = {'model_state_dict': model.state_dict(),
+                    'optim_state_dict': optimizer.state_dict(),
+                    'start_epoch'     : epoch+1,
+                    'test_error_best' : test_error_best,
+                    'epoch_best'      : epoch_best,
+                    'train_time'      : train_time}
+            torch.save(ckpt, name)
+        if acc_record.avg > max_accuracy:
+            max_accuracy = acc_record.avg    
 
-             images, labels = images.cuda(), labels.cuda()
-             if dataset=='CIFAR10' or dataset=='CIFAR100':
-                 images =rin(images)
-                      
-             #images =m(images)
-             
-             out     = model(images)
-             loss1   = criterion(out, labels)
-             test_loss.update(loss1.item(), labels.size(0))
-             _, predicted = out.max(1)
-            #total += targets.size(0)
-             topk = (1,)
-             correct_pred_top1 += predicted.eq(labels).sum().item()
-             _, pred = out.topk(topk, 1, True, True)
-             pred    = pred.t()
-             correct = pred.eq(labels.view(1, -1).expand_as(pred))
-             correct_pred_top1 += correct[:1].view(-1).float().sum(0, keepdim=True)
-             correct_pred_topk += correct[:topk].view(-1).float().sum(0, keepdim=True)
-
-    test_loss_per_epoch = test_loss.avg        
-#    print("Epoch: {}/{};".format(epoch+1, end_epoch), "########## Test loss: {}".format(test_loss_per_epoch))
-    if(tensorboard):
-       log_value('test_loss', test_loss_per_epoch, epoch)
-    # Print error measures and log progress to TensorBoard
-    test_error_top1 = (1-(correct_pred_top1/num_test))*100
-#    test_error_topk = (1-(correct_pred_topk/num_test))*100
-    test_error_chgd = False
-    if(test_error_top1 < test_error_best):
-       test_error_best = test_error_top1
-       epoch_best      = epoch
-       test_error_chgd = True
-    # print("Epoch: {}/{};".format(epoch_best+1, end_epoch), "Test error (top1-best): {:.2f}%".format(test_error_best))
-    print("Epoch: {}/{};".format(epoch+1,      end_epoch), "Test error (top1-cur) : {:.2f}%".format(test_error_top1))
-#    print("Epoch: {}/{};".format(epoch+1,      end_epoch), "########## Test error (top"+str(topk)+"-cur) : {:.2f}%".format(test_error_topk[0]))
-    if(tensorboard):
-       log_value('test_error (top1-best)', test_error_best, epoch)
-       log_value('test_error (top1)', test_error_top1, epoch)
-#       log_value('test_error (top'+str(topk)+')', test_error_topk, epoch)
-
-    # Checkpoint SNN training and evaluation states
-    if((ckpt_intrvl > 0) and ((epoch == end_epoch-1) or test_error_chgd)):
-       print('=========== Checkpointing ANN training and evaluation states')
-       ckpt = {'model_state_dict': model.state_dict(),
-               'optim_state_dict': optimizer.state_dict(),
-               'start_epoch'     : epoch+1,
-               'test_error_best' : test_error_best,
-               'epoch_best'      : epoch_best,
-               'train_time'      : train_time}
-       if(test_error_chgd):
-          torch.save(ckpt, ckpt_fname)
+        print('--Test: run_time: {:.2f}\t loss: {:.4f}\t test_acc: {:.2f}\t best: {:.2f}'.  format(
+            run_time,
+            loss_record.avg,
+            acc_record.avg,
+            max_accuracy
+            )
+        )
+ print('Highest accuracy: {:.2f}'.format(max_accuracy))
