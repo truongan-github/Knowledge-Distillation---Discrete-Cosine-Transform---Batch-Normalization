@@ -34,56 +34,6 @@ def rin(input,b=4,s=2):
       
   return output
 
-class DCT2(nn.Module):
-    def __init__(self, block_size=4, p=0, mode = 'random', mean = None, std=None, device = 'cpu'):
-
-      super(DCT2, self).__init__()
-      ### forming the cosine transform matrix
-      self.block_size = block_size
-      self.device = device
-      self.mean =mean
-      self.std =std
-      self.Q = torch.zeros((self.block_size,self.block_size)).to(self.device)
-      
-      self.Q[0] = math.sqrt( 1.0/float(self.block_size) )
-      for i in range (1,self.block_size,1):
-        for j in range(self.block_size):
-          self.Q[i,j] = math.sqrt( 2.0/float(self.block_size) ) * math.cos( float((2*j+1)*math.pi*i) /float(2.0*self.block_size) )
-
-      
-
-    def rgb_to_ycbcr(self,input):
-        
-        # input is mini-batch N x 3 x H x W of an RGB image
-        #output = Variable(input.data.new(*input.size())).to(self.device)
-        output = torch.zeros_like(input).to(self.device)
-        input = (input * 255.0)
-        output[:, 0, :, :] = input[:, 0, :, :] * 0.299+ input[:, 1, :, :] * 0.587 + input[:, 2, :, :] * 0.114 
-        output[:, 1, :, :] = input[:, 0, :, :] * -0.168736 - input[:, 1, :, :] *0.331264+ input[:, 2, :, :] * 0.5 + 128
-        output[:, 2, :, :] = input[:, 0, :, :] * 0.5 - input[:, 1, :, :] * 0.418688- input[:, 2, :, :] * 0.081312+ 128
-        return output/255.0
-
-    def ycbcr_to_freq(self,input): 
- 
-        
-        output = torch.zeros_like(input).to(self.device)
-        a=int(input.shape[2]/self.block_size)
-        b=int(input.shape[3]/self.block_size)
-       
-        # Compute DCT in block_size x block_size blocks 
-        for i in range(a):
-            for j in range(b):
-                output[:,:,i*self.block_size : (i+1)*self.block_size,j*self.block_size : (j+1)*self.block_size] = torch.matmul(torch.matmul(self.Q, input[:, :, i*self.block_size : (i+1)*self.block_size, j*self.block_size : (j+1)*self.block_size]), self.Q.permute(1,0).contiguous() )
-               
-        return output 
-
-    def forward(self, x):
-        #return self.ycbcr_to_freq( self.rgb_to_ycbcr(x) )
-        if (x.shape[1]==3):
-          return self.ycbcr_to_freq( self.rgb_to_ycbcr(x) )
-        else:
-          return self.ycbcr_to_freq(x )  
-
 class AverageMeter(object):
     """Computes and stores the average and current value"""
     def __init__(self, name, fmt=':f'):
@@ -191,12 +141,6 @@ print('==> Preparing data..')
 dataset             = 'CIFAR10'
 #usual
 
-# usual imgnet stat from repos
-#normalize       = transforms.Normalize(mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225])
-
-# calculated itiny-mgnet stat 
-#normalize       = transforms.Normalize(mean = [0.48, 0.448, 0.3975], std = [0.277, 0.269, 0.282])
-
 if dataset == 'CIFAR100':
     normalize   = transforms.Normalize((0.5071,0.4867,0.4408),(0.2675,0.2565,0.2761))
     labels      = 100 
@@ -210,62 +154,6 @@ transform_train = transforms.Compose([
         normalize
         ])
 transform_test = transforms.Compose([transforms.ToTensor(), normalize])
-
-# if dataset == 'CIFAR10':
-#     trainset    = datasets.CIFAR10(root = './cifar_data', train = True, download = True, transform=transform_train)
-#     testset     = datasets.CIFAR10(root='./cifar_data', train=False, download=True, transform=transform_test)
-#     labels      = 10
-
-# elif dataset == 'CIFAR100':
-#     trainset    = datasets.CIFAR100(root = './cifar_data', train = True, download = True, transform=transform_train)
-#     testset     = datasets.CIFAR100(root='./cifar_data', train=False, download=True, transform=transform_test)
-#     labels      = 100
-
-# elif dataset == 'IMAGENET':
-#     labels      = 1000
-#     traindir    = os.path.join('/local/scratch/a/imagenet/imagenet2012/', 'train')
-#     valdir      = os.path.join('/local/scratch/a/imagenet/imagenet2012/', 'val')
-#     trainset    = datasets.ImageFolder(
-#                         traindir,
-#                         transforms.Compose([
-#                             transforms.RandomResizedCrop(224),
-#                             transforms.RandomHorizontalFlip(),
-#                             transforms.ToTensor(),
-#                             normalize,
-#                         ]))
-#     testset     = datasets.ImageFolder(
-#                         valdir,
-#                         transforms.Compose([
-#                             transforms.Resize(256),
-#                             transforms.CenterCrop(224),
-#                             transforms.ToTensor(),
-#                             normalize,
-#                         ])) 
-# elif dataset == 'tinyIMAGENET':
-#     labels      = 200
-#     # adding the tinyimagenet directory
-#     traindir    = os.path.join('/home/nano01/a/banerj11/srinivg_BackProp_CIFAR10/sayeed/tiny-imagenet-200/', 'train')
-#     valdir      = os.path.join('/home/nano01/a/banerj11/srinivg_BackProp_CIFAR10/sayeed/tiny-imagenet-200/', 'val')
-   
-# #    traindir    = os.path.join('/local/scratch/a/chowdh23/data/tiny-imagenet-200/', 'train')
-# #    valdir      = os.path.join('/local/scratch/a/chowdh23/data/tiny-imagenet-200/', 'val')
-#     trainset    = datasets.ImageFolder(
-#                         traindir,
-#                         transforms.Compose([
-#                             transforms.RandomResizedCrop(64),
-#                             transforms.RandomHorizontalFlip(),
-#                             transforms.RandomVerticalFlip(),
-#                             transforms.ToTensor(),
-#                             normalize,
-#                         ]))
-#     testset     = datasets.ImageFolder(
-#                         valdir,
-#                         transforms.Compose([
-#                             #transforms.Resize(256),
-#                             #transforms.CenterCrop(224),
-#                             transforms.ToTensor(),
-#                             normalize,
-#                         ]))
 
 if dataset == 'CIFAR100':
     trainset  = CIFAR100(root='./data/cifar100', train=True, download=True,transform =transform_train)
@@ -314,9 +202,6 @@ if torch.cuda.is_available() and gpu:
 model = torch.nn.DataParallel(model).cuda()
 print(model)
 
-# device = torch.device("cuda" if use_cuda else "cpu")
-# m=DCT2(block_size=4, device = device).to(device)
-
 # criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
 print(' {}'.format(optimizer))
@@ -349,10 +234,11 @@ for epoch in range(start_epoch, end_epoch):
     for inputs, targets in trainloader:
         if use_cuda and gpu:
             data, target = data.cuda(), target.cuda() 
+        
         # Load the inputs and targets        
         if dataset=='CIFAR10' or dataset=='CIFAR100':
             inputs =rin(inputs)
-        # print(inputs)
+
         optimizer.zero_grad()
         
         output = model(inputs)
@@ -363,7 +249,6 @@ for epoch in range(start_epoch, end_epoch):
           nor_knowledge = F.softmax(knowledge / kd_T, dim=1)
 
         loss_ce   = F.cross_entropy(output, targets)
-        # print(loss_ce)
         loss_kd = F.kl_div(log_nor_output, nor_knowledge, reduction='batchmean') * kd_T * kd_T
         loss = ce_weight * loss_ce + kd_weight * loss_kd
 
@@ -376,7 +261,6 @@ for epoch in range(start_epoch, end_epoch):
         loss_kd_record.update(loss_kd.item(), inputs.size(0))
         acc_record.update(batch_acc.item(), inputs.size(0))
         
-        # print(loss_ce_record)
     run_time = time.time() - start_time
     info = 'Train: Epoch:{:03d}/{:03d}\t Time:{:.3f}\t Cross-entropy loss:{:.3f}\t Kulback-Leibner Loss:{:.3f}\t Accuracy:{:.2f}'.format(
             epoch+1, num_epochs, run_time, loss_ce_record.avg, loss_kd_record.avg, acc_record.avg)
@@ -407,7 +291,7 @@ for epoch in range(start_epoch, end_epoch):
             ckpt = {'model_state_dict': model.state_dict(),
                       'optim_state_dict': optimizer.state_dict(),
                       'start_epoch'     : epoch+1,
-                      'test_error_best' : loss_record.avg,
+                      'max_accuracy'    : max_accuracy,
                       'epoch_best'      : epoch,
                       'train_time'      : train_time}
             torch.save(ckpt, ckpt_fname)
