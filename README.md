@@ -1,1 +1,2 @@
 # Knowledge-Distillation---Discrete-Cosine-Transform---Batch-Normalization
+To train SNN with Knowledge Distillation, first you need to train large ANN model (VGG16), then train small ANN model which is smaller than large ANN (VGG13, 11, 9, 5). Then train SNN with large and small ANN with Knowledge Distillation. Discreste Cosine Transform is implemented in the SNN to distributed pixel through timestep & Batch-norm are used in the SNN model.
